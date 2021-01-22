@@ -5,6 +5,7 @@ extern crate rocket;
 mod data_structures;
 
 use data_structures::{get_lemmas, get_variants, normalise_string, Candidate, LemmaInfo};
+use reqwest;
 use rocket::config::{Config, Environment};
 use rocket::http::{Header, RawStr};
 use rocket::response::Responder;
@@ -44,7 +45,7 @@ fn main() {
 
     rocket::custom(config)
         .manage(global_state)
-        .mount("/", routes![index, serve_forms, serve_lemmas])
+        .mount("/", routes![index, serve_forms, serve_lemmas, dil])
         .launch();
 }
 
@@ -196,6 +197,31 @@ fn serve_forms(
     }
     Some(FormJsonWithOrigin {
         data: Json(result),
+        header: Header::new("Access-Control-Allow-Origin", "*"),
+    })
+}
+
+#[derive(Responder)]
+struct TextWithOrigin {
+    data: String,
+    header: Header<'static>,
+}
+
+#[get("/dil/<entryid>")]
+fn dil(entryid: &RawStr) -> Option<TextWithOrigin> {
+    let entryid = match entryid.url_decode() {
+        Ok(entryid) => entryid
+            .parse::<usize>()
+            .expect("entryid parameter should be an integer"),
+        Err(_) => return None,
+    };
+    let url = format!("http://dil.ie/browse/show?q={}", entryid);
+    let body = reqwest::blocking::get(&url)
+        .expect("Couldn't connect to the DIL server")
+        .text()
+        .unwrap();
+    Some(TextWithOrigin {
+        data: body,
         header: Header::new("Access-Control-Allow-Origin", "*"),
     })
 }
